@@ -1,6 +1,7 @@
 package net.xamence.commandmessage;
 
 
+import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
@@ -29,13 +30,14 @@ import java.util.Map;
 public class CommandMessage {
 
 
-    private Logger logger;
+    private final Logger logger;
 
-    private ProxyServer proxy;
+    private final ProxyServer proxy;
 
     private YamlDocument pluginConfig;
     private Map<String, String> commandMessageMap;
 
+    @Inject
     public CommandMessage(ProxyServer proxy, Logger logger, @DataDirectory Path pluginDirectory) {
         this.proxy = proxy;
         this.logger = logger;
@@ -62,7 +64,7 @@ public class CommandMessage {
 
             this.commandMessageMap.put(commandName, messageFromJSON);
 
-            CommandManager commandManager = proxy.getCommandManager();;
+            CommandManager commandManager = proxy.getCommandManager();
 
 
             commandManager.register(commandManager.metaBuilder(commandName).plugin(this).build(), new SimpleCommand() {
