@@ -1,6 +1,5 @@
 package net.xamence.commandmessage;
 
-
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.SimpleCommand;
@@ -10,11 +9,17 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import dev.dejvokep.boostedyaml.YamlDocument;
+import dev.dejvokep.boostedyaml.settings.dumper.DumperSettings;
+import dev.dejvokep.boostedyaml.settings.general.GeneralSettings;
+import dev.dejvokep.boostedyaml.settings.loader.LoaderSettings;
+import dev.dejvokep.boostedyaml.settings.updater.UpdaterSettings;
+import dev.dejvokep.boostedyaml.updater.Updater;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.slf4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,7 +40,7 @@ public class CommandMessage {
     private final ProxyServer proxy;
 
     private YamlDocument pluginConfig;
-    private Map<String, String> commandMessageMap;
+    private final Map<String, DynamicMessageCommand> commandMessageMap;
 
     @Inject
     public CommandMessage(ProxyServer proxy, Logger logger, @DataDirectory Path pluginDirectory) {
@@ -45,15 +50,36 @@ public class CommandMessage {
         this.commandMessageMap = new HashMap<>();
 
         try {
-            this.pluginConfig = YamlDocument.create(new File(pluginDirectory.toFile(), "config.yml"), getClass().getResourceAsStream("/config.yml"));
+            File configFile = new File(pluginDirectory.toFile(), "config.yml");
 
-            this.pluginConfig.update();
-            this.pluginConfig.save();
+
+            if (!configFile.exists()) {
+                try (InputStream defaultConfig = getClass().getResourceAsStream("/config.yml")) {
+                    this.pluginConfig = YamlDocument.create(
+                            configFile,
+                            defaultConfig,
+                            GeneralSettings.DEFAULT,
+                            LoaderSettings.builder().setAutoUpdate(false).build(),
+                            DumperSettings.DEFAULT,
+                            UpdaterSettings.DEFAULT
+                    );
+                    this.pluginConfig.save();
+                    this.logger.info("Config.yml created successfully.");
+                }
+            } else {
+                this.pluginConfig = YamlDocument.create(
+                        configFile,
+                        GeneralSettings.DEFAULT,
+                        LoaderSettings.builder().setAutoUpdate(false).build(),
+                        DumperSettings.DEFAULT
+                );
+                this.pluginConfig.reload();
+                this.logger.info("Config.yml loaded successfully.");
+            }
         } catch (IOException e) {
             this.logger.error("Can't use the config file !");
             proxy.getPluginManager().getPlugin("commandmessage").ifPresent((pluginContainer -> pluginContainer.getExecutorService().shutdown()));
         }
-
     }
 
 
@@ -62,18 +88,51 @@ public class CommandMessage {
             String commandName = String.valueOf(keys);
             String messageFromJSON = this.pluginConfig.getString(commandName);
 
-            this.commandMessageMap.put(commandName, messageFromJSON);
+            DynamicMessageCommand currentCommand = this.commandMessageMap.get(commandName);
 
-            CommandManager commandManager = proxy.getCommandManager();
+            if (currentCommand == null) {
+                currentCommand = new DynamicMessageCommand(messageFromJSON);
 
+                this.commandMessageMap.put(commandName, currentCommand);
 
-            commandManager.register(commandManager.metaBuilder(commandName).plugin(this).build(), new SimpleCommand() {
-                @Override
-                public void execute(Invocation invocation) {
-                    invocation.source().sendMessage(MiniMessage.miniMessage().deserialize(messageFromJSON));
-                }
-            });
+                CommandManager commandManager = proxy.getCommandManager();
+                commandManager.register(commandManager.metaBuilder(commandName).plugin(this).build(), currentCommand);
+            } else {
+                currentCommand.setMessage(messageFromJSON);
+            }
+
         }
+    }
+
+    private void reloadConfig() {
+        try {
+            this.pluginConfig.reload();
+            this.commandMessageMap.clear();
+            this.registerCommands();
+            this.logger.info("Configuration reloaded successfully.");
+        } catch (IOException e) {
+            this.logger.error("Error while reloading configuration!", e);
+        }
+    }
+
+
+    private void registerMainCommand() {
+        CommandManager commandManager = this.proxy.getCommandManager();
+
+        commandManager.register(
+                commandManager.metaBuilder("commandmessage").aliases("cm").plugin(this).build(),
+                (SimpleCommand) invocation -> {
+                    String[] args = invocation.arguments();
+
+                    if(args.length == 1 && args[0].equals("reload")) {
+                        this.reloadConfig();
+                        invocation.source().sendMessage(MiniMessage.miniMessage().deserialize("<green>Rechargement des commandes : <b>exécuté</b>.</green>"));
+                        return;
+                    }
+
+                    invocation.source().sendMessage(MiniMessage.miniMessage().deserialize("<red>Utilise plutôt : <click:suggest_command:'/commandmessage reload'><u>/commandmessage reload</u></click></red>"));
+                }
+        );
     }
 
     @Subscribe
@@ -81,5 +140,6 @@ public class CommandMessage {
         this.logger.info("CommandMessage Initializing....");
 
         this.registerCommands();
+        this.registerMainCommand();
     }
 }
