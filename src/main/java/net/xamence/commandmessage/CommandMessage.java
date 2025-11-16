@@ -132,6 +132,7 @@ public class CommandMessage {
                     invocation.source().sendMessage(MiniMessage.miniMessage().deserialize("<red>Utilise plutôt : <click:suggest_command:'/commandmessage reload'><u>/commandmessage reload</u></click></red>"));
                 }
         );
+        commandManager.register(commandManager.metaBuilder("lobby").plugin(this).build(), new LobbyCommand(proxy));
     }
 
     @Subscribe

@@ -6,10 +6,12 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 public class DynamicMessageCommand implements SimpleCommand {
 
     private volatile String message;
-
+    private static MiniMessage miniMessage = MiniMessage.miniMessage();
+    private boolean active;
 
     public DynamicMessageCommand(String message) {
         this.message = message;
+        this.active = true;
     }
 
     public void setMessage(String message) {
@@ -18,6 +20,7 @@ public class DynamicMessageCommand implements SimpleCommand {
 
     @Override
     public void execute(Invocation invocation) {
+        if (!active) return;
         invocation.source().sendMessage(MiniMessage.miniMessage().deserialize(message));
     }
 }
